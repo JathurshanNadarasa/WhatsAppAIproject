@@ -1,5 +1,7 @@
 const express = require('express')
 require('dotenv').config()
+const cors = require('cors')
+
 const healthRoutes = require('./routes/health.routes')
 const versionRoutes = require('./routes/version.routes')
 const databaseRoutes = require('./routes/database.routes')
@@ -7,7 +9,9 @@ const notFound = require('./middleware/not-found.middleware')
 
 
 const app = express()
-
+app.use(cors({
+    origin: 'http://localhost:3000'
+}))
 app.use(express.json())
 
 app.use('/api/health',healthRoutes)
