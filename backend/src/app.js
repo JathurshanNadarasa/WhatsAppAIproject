@@ -6,6 +6,8 @@ const healthRoutes = require('./routes/health.routes')
 const versionRoutes = require('./routes/version.routes')
 const databaseRoutes = require('./routes/database.routes')
 const authRoutes = require('./routes/auth.routes')
+const customerRoutes = require('./routes/customer.routes')
+const conversationRoutes = require("./routes/conversation.routes");
 const notFound = require('./middleware/not-found.middleware')
 
 
@@ -20,6 +22,8 @@ app.use('/api/health',healthRoutes)
 app.use('/api/version',versionRoutes)
 app.use('/api/health/database',databaseRoutes)
 app.use('/api/auth',authRoutes)
+app.use('/api/customers',customerRoutes)
+app.use("/api/conversations",conversationRoutes)
 app.use(notFound)
 // app.get('/api/health',(req,res)=>{
 //     res.json({
