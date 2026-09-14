@@ -5,7 +5,9 @@ const cors = require('cors')
 const healthRoutes = require('./routes/health.routes')
 const versionRoutes = require('./routes/version.routes')
 const databaseRoutes = require('./routes/database.routes')
+const authRoutes = require('./routes/auth.routes')
 const notFound = require('./middleware/not-found.middleware')
+
 
 
 const app = express()
@@ -17,6 +19,7 @@ app.use(express.json())
 app.use('/api/health',healthRoutes)
 app.use('/api/version',versionRoutes)
 app.use('/api/health/database',databaseRoutes)
+app.use('/api/auth',authRoutes)
 app.use(notFound)
 // app.get('/api/health',(req,res)=>{
 //     res.json({
