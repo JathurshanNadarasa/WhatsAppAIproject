@@ -1,128 +1,85 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
-import {
-    getHealth,
-    getVersion,
-    getDatabaseHealth,
-} from "../services/health.service";
-
-import type {
-    HealthResponse,
-    VersionResponse,
-    DatabaseHealthResponse,
-} from "../types/api";
+import Sidebar from "../components/Sidebar";
+import CustomerList from "../components/CustomerList";
+import ConversationList from "../components/ConversationList";
 
 export default function Home() {
-    const [health, setHealth] = useState<HealthResponse | null>(null);
-    const [version, setVersion] = useState<VersionResponse | null>(null);
-    const [database, setDatabase] =
-        useState<DatabaseHealthResponse | null>(null);
 
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
-
-    useEffect(() => {
-        const loadSystemStatus = async () => {
-            try {
-                const [
-                    healthResponse,
-                    versionResponse,
-                    databaseResponse,
-                ] = await Promise.all([
-                    getHealth(),
-                    getVersion(),
-                    getDatabaseHealth(),
-                ]);
-
-                setHealth(healthResponse);
-                setVersion(versionResponse);
-                setDatabase(databaseResponse);
-            } catch (err) {
-                console.error(err);
-                setError("Unable to connect to the backend.");
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        loadSystemStatus();
-    }, []);
+    const [activePage, setActivePage] =
+        useState("dashboard");
 
     return (
-        <main className="min-h-screen bg-gray-100 p-8">
-            <div className="mx-auto max-w-6xl">
+        <div className="flex min-h-screen bg-gray-50">
 
-                <h1 className="text-3xl font-bold">
-                    Nexora WhatsApp AI
-                </h1>
+            <Sidebar
+                activePage={activePage}
+                setActivePage={setActivePage}
+            />
 
-                <p className="mt-2 text-gray-600">
-                    WhatsApp Business Automation Platform
-                </p>
+            <main className="flex-1 p-8">
 
-                {loading && (
-                    <p className="mt-8">
-                        Checking system status...
-                    </p>
-                )}
+                {activePage === "dashboard" && (
 
-                {error && (
-                    <div className="mt-8 rounded-lg bg-red-100 p-4 text-red-700">
-                        {error}
-                    </div>
-                )}
+                    <div>
 
-                {!loading && !error && (
-                    <div className="mt-8 grid gap-6 md:grid-cols-3">
+                        <h1 className="text-3xl font-bold">
+                            Dashboard
+                        </h1>
 
-                        <div className="rounded-xl bg-white p-6 shadow">
-                            <p className="text-sm text-gray-500">
-                                API Status
-                            </p>
+                        <p className="mt-2 text-gray-500">
+                            Welcome to Nexora WhatsApp AI.
+                        </p>
 
-                            <h2 className="mt-2 text-xl font-semibold">
-                                🟢 Online
-                            </h2>
+                        <div className="mt-8 grid gap-5 md:grid-cols-3">
 
-                            <p className="mt-2 text-sm text-gray-600">
-                                {health?.message}
-                            </p>
-                        </div>
+                            <div className="rounded-xl border bg-white p-6 shadow-sm">
+                                <p className="text-sm text-gray-500">
+                                    Customers
+                                </p>
 
-                        <div className="rounded-xl bg-white p-6 shadow">
-                            <p className="text-sm text-gray-500">
-                                Database
-                            </p>
+                                <p className="mt-2 text-3xl font-bold">
+                                    CRM
+                                </p>
+                            </div>
 
-                            <h2 className="mt-2 text-xl font-semibold">
-                                🟢 Connected
-                            </h2>
+                            <div className="rounded-xl border bg-white p-6 shadow-sm">
+                                <p className="text-sm text-gray-500">
+                                    Conversations
+                                </p>
 
-                            <p className="mt-2 text-sm text-gray-600">
-                                PostgreSQL
-                            </p>
-                        </div>
+                                <p className="mt-2 text-3xl font-bold">
+                                    WhatsApp
+                                </p>
+                            </div>
 
-                        <div className="rounded-xl bg-white p-6 shadow">
-                            <p className="text-sm text-gray-500">
-                                API Version
-                            </p>
+                            <div className="rounded-xl border bg-white p-6 shadow-sm">
+                                <p className="text-sm text-gray-500">
+                                    AI
+                                </p>
 
-                            <h2 className="mt-2 text-xl font-semibold">
-                                {version?.version}
-                            </h2>
+                                <p className="mt-2 text-3xl font-bold">
+                                    Coming Soon
+                                </p>
+                            </div>
 
-                            <p className="mt-2 text-sm text-gray-600">
-                                Backend version
-                            </p>
                         </div>
 
                     </div>
                 )}
 
-            </div>
-        </main>
+                {activePage === "customers" && (
+                    <CustomerList />
+                )}
+
+                {activePage === "conversations" && (
+                    <ConversationList />
+                )}
+
+            </main>
+
+        </div>
     );
 }
