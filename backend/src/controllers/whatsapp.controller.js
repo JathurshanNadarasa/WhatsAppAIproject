@@ -1,3 +1,13 @@
+const {
+    parseIncomingMessage
+} = require("../services/whatsapp/whatsapp.parser");
+
+const {
+     getBusinessByPhoneNumberId,
+    processIncomingMessage
+} = require("../services/whatsapp/whatsapp.service");
+
+
 const verifyWebhook = (req, res) => {
     const mode = req.query['hub.mode']
     const token = req.query['hub.verify_token']
@@ -23,21 +33,90 @@ const verifyWebhook = (req, res) => {
 }
 const receiveWebhook = async (req, res) => {
     try {
-        console.log('WhatsApp webhook received')
-        console.log(JSON.stringify(req.body, null, 2))
+        console.log("WhatsApp webhook received:");
 
-        return res.sendStatus(200)
+        const message = parseIncomingMessage(req.body);
+
+        if (!message) {
+            console.log(
+                "No incoming WhatsApp message found"
+            );
+
+            return res.sendStatus(200);
+        }
+
+        console.log(
+            "Incoming WhatsApp message:",
+            message
+        );
+
+        const business =
+            await getBusinessByPhoneNumberId(
+                message.phoneNumberId
+            );
+
+        if (!business) {
+            console.error(
+                "WhatsApp business not found for phone number ID:",
+                message.phoneNumberId
+            );
+
+            return res.sendStatus(200);
+        }
+
+        console.log(
+            "WhatsApp business identified:",
+            business
+        );
+
+        const result =
+            await processIncomingMessage({
+                businessId: business.id,
+                phone: message.phone,
+                messageId: message.messageId,
+                messageType: message.messageType,
+                messageText: message.messageText
+            });
+
+        if (result.duplicate) {
+            console.log(
+                "Duplicate WhatsApp message ignored:",
+                result.messageId
+            );
+
+            return res.sendStatus(200);
+        }
+
+        console.log(
+            "WhatsApp message saved successfully"
+        );
+
+        console.log(
+            "Customer:",
+            result.customer
+        );
+
+        console.log(
+            "Conversation ID:",
+            result.conversationId
+        );
+
+        console.log(
+            "Message:",
+            result.message
+        );
+
+        return res.sendStatus(200);
 
     } catch (error) {
         console.error(
-            'WhatsApp webhook error:',
+            "WhatsApp webhook error:",
             error.message
-        )
+        );
 
-        return res.sendStatus(500)
+        return res.sendStatus(500);
     }
-}
-
+};
 module.exports = {
     verifyWebhook,
     receiveWebhook
