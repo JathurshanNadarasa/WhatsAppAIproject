@@ -1,6 +1,7 @@
+const dotenv = require('dotenv')
 const express = require('express')
 
-const dotenv = require('dotenv')
+
 
 const result = dotenv.config()
 

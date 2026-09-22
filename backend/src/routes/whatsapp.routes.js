@@ -2,7 +2,8 @@ const express = require("express");
 
 const {
     verifyWebhook,
-    receiveWebhook
+    receiveWebhook,
+    sendMessage
 } = require("../controllers/whatsapp.controller");
 
 const router = express.Router();
@@ -17,4 +18,7 @@ router.post(
     receiveWebhook
 );
 
+router.post(
+    "/send", sendMessage
+);
 module.exports = router;

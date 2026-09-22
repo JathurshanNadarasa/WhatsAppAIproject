@@ -4,7 +4,8 @@ const {
 
 const {
      getBusinessByPhoneNumberId,
-    processIncomingMessage
+    processIncomingMessage,
+    saveOutgoingMessage
 } = require("../services/whatsapp/whatsapp.service");
 
 
@@ -117,7 +118,76 @@ const receiveWebhook = async (req, res) => {
         return res.sendStatus(500);
     }
 };
+
+const {
+    sendWhatsAppMessage
+} = require("../services/whatsapp/whatsapp.sender");
+
+const sendMessage = async (req, res) => {
+    try {
+        const {
+            to,
+            message
+        } = req.body;
+
+        if (!to || !message) {
+            return res.status(400).json({
+                success: false,
+                message: "Recipient and message are required"
+            });
+        }
+
+        const businessId = 1;
+
+        const result = await sendWhatsAppMessage({
+            phoneNumberId:
+                process.env.WHATSAPP_PHONE_NUMBER_ID,
+
+            accessToken:
+                process.env.WHATSAPP_ACCESS_TOKEN,
+
+            to,
+            message
+        });
+
+        const whatsappMessageId =
+            result.messages?.[0]?.id;
+
+        const savedMessage =
+            await saveOutgoingMessage({
+                businessId,
+                phone: to,
+                messageText: message,
+                whatsappMessageId
+            });
+
+        return res.status(200).json({
+            success: true,
+            message: "WhatsApp message sent and saved successfully",
+            data: {
+                whatsapp: result,
+                database: savedMessage
+            }
+        });
+
+    } catch (error) {
+        console.error(
+            "WhatsApp send error:",
+            error.response?.data ||
+            error.message
+        );
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to send WhatsApp message",
+            error:
+                error.response?.data ||
+                error.message
+        });
+    }
+};
 module.exports = {
     verifyWebhook,
-    receiveWebhook
-}
+    receiveWebhook,
+    sendMessage
+};
