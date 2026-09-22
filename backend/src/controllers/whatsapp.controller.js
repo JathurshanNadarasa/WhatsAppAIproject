@@ -9,6 +9,7 @@ const {
 } = require("../services/whatsapp/whatsapp.service");
 
 
+
 const verifyWebhook = (req, res) => {
     const mode = req.query['hub.mode']
     const token = req.query['hub.verify_token']
@@ -34,11 +35,16 @@ const verifyWebhook = (req, res) => {
 }
 const receiveWebhook = async (req, res) => {
     try {
-        console.log("WhatsApp webhook received:");
 
-        const message = parseIncomingMessage(req.body);
+        console.log(
+            "WhatsApp webhook received:"
+        );
+
+        const message =
+            parseIncomingMessage(req.body);
 
         if (!message) {
+
             console.log(
                 "No incoming WhatsApp message found"
             );
@@ -51,12 +57,15 @@ const receiveWebhook = async (req, res) => {
             message
         );
 
+
+        // 1. Identify business
         const business =
             await getBusinessByPhoneNumberId(
                 message.phoneNumberId
             );
 
         if (!business) {
+
             console.error(
                 "WhatsApp business not found for phone number ID:",
                 message.phoneNumberId
@@ -70,6 +79,9 @@ const receiveWebhook = async (req, res) => {
             business
         );
 
+
+        // 2. Save incoming message
+        //    + Generate AI response
         const result =
             await processIncomingMessage({
                 businessId: business.id,
@@ -79,7 +91,10 @@ const receiveWebhook = async (req, res) => {
                 messageText: message.messageText
             });
 
+
+        // 3. Ignore duplicate messages
         if (result.duplicate) {
+
             console.log(
                 "Duplicate WhatsApp message ignored:",
                 result.messageId
@@ -87,6 +102,7 @@ const receiveWebhook = async (req, res) => {
 
             return res.sendStatus(200);
         }
+
 
         console.log(
             "WhatsApp message saved successfully"
@@ -107,11 +123,67 @@ const receiveWebhook = async (req, res) => {
             result.message
         );
 
+
+        // 4. Display AI response
+        if (!result.aiReply) {
+
+            console.log(
+                "No AI reply generated"
+            );
+
+            return res.sendStatus(200);
+        }
+// 5. Save AI reply to database
+const outgoingMessage =
+    await saveOutgoingMessage({
+        businessId: business.id,
+        phone: message.phone,
+        messageText: result.aiReply,
+        whatsappMessageId: null
+    });
+
+console.log(
+    "AI reply saved to database:"
+);
+
+console.log(
+    outgoingMessage
+);
+
+        console.log(
+            "================================="
+        );
+
+        console.log(
+            "AI REPLY:"
+        );
+
+        console.log(
+            result.aiReply
+        );
+
+        console.log(
+            "================================="
+        );
+
+
+        // 5. Temporary development mode
+        console.log(
+            "Development mode:"
+        );
+
+        console.log(
+            "WhatsApp sending is temporarily disabled."
+        );
+
+
         return res.sendStatus(200);
 
     } catch (error) {
+
         console.error(
             "WhatsApp webhook error:",
+            error.response?.data ||
             error.message
         );
 

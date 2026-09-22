@@ -1,5 +1,7 @@
 const pool = require("../../config/database");
-
+const {
+    generateAIResponse,
+} = require("../ai/ai.service");
 const getBusinessByPhoneNumberId = async (
     phoneNumberId
 ) => {
@@ -25,6 +27,8 @@ const processIncomingMessage = async ({
     messageType,
     messageText
 }) => {
+
+    // 1. Check duplicate WhatsApp message
     const existingMessage = await pool.query(
         `SELECT id
          FROM messages
@@ -39,6 +43,8 @@ const processIncomingMessage = async ({
         };
     }
 
+
+    // 2. Find existing customer
     const customerResult = await pool.query(
         `SELECT id, name, phone, email
          FROM customers
@@ -51,8 +57,12 @@ const processIncomingMessage = async ({
     let customer;
 
     if (customerResult.rows.length > 0) {
+
         customer = customerResult.rows[0];
+
     } else {
+
+        // 3. Create customer
         const newCustomerResult = await pool.query(
             `INSERT INTO customers
              (business_id, name, phone)
@@ -68,6 +78,8 @@ const processIncomingMessage = async ({
         customer = newCustomerResult.rows[0];
     }
 
+
+    // 4. Find open conversation
     const conversationResult = await pool.query(
         `SELECT id
          FROM conversations
@@ -82,8 +94,12 @@ const processIncomingMessage = async ({
     let conversationId;
 
     if (conversationResult.rows.length > 0) {
+
         conversationId = conversationResult.rows[0].id;
+
     } else {
+
+        // 5. Create conversation
         const newConversationResult = await pool.query(
             `INSERT INTO conversations
              (business_id, customer_id, status)
@@ -99,6 +115,8 @@ const processIncomingMessage = async ({
             newConversationResult.rows[0].id;
     }
 
+
+    // 6. Save customer message
     const messageResult = await pool.query(
         `INSERT INTO messages
          (
@@ -126,6 +144,8 @@ const processIncomingMessage = async ({
         ]
     );
 
+
+    // 7. Update conversation timestamp
     await pool.query(
         `UPDATE conversations
          SET last_message_at = CURRENT_TIMESTAMP
@@ -133,11 +153,44 @@ const processIncomingMessage = async ({
         [conversationId]
     );
 
+
+    // 8. Generate AI response
+    let aiReply = null;
+
+try {
+
+    const aiResult =
+        await generateAIResponse(
+            messageText
+        );
+
+    console.log(
+        "AI Result:",
+        aiResult
+    );
+
+    aiReply = aiResult.reply;
+
+    console.log(
+        "AI Reply:",
+        aiReply
+    );
+
+    } catch (error) {
+
+        console.error(
+            "AI response generation failed:",
+            error.message
+        );
+    }
+
+    // 9. Return incoming message + AI response
     return {
         duplicate: false,
         customer,
         conversationId,
-        message: messageResult.rows[0]
+        message: messageResult.rows[0],
+        aiReply
     };
 };
 
