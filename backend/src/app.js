@@ -21,6 +21,17 @@ const aiRoutes = require("./routes/ai.routes");
 const knowledgeRoutes = require("./routes/knowledge.routes");
 const whatsappTestRoutes =
     require("./routes/whatsapp.test.routes");
+    const intentTestRoutes =
+    require("./routes/intent.test.routes");
+    const entityTestRoutes =
+    require("./routes/entity.test.routes");
+    const customerInfoTestRoutes =
+    require(
+        "./routes/customer-info.test.routes"
+    );
+    const customerTestRoutes =
+    require("./routes/customer.test.routes");
+
 const notFound = require('./middleware/not-found.middleware')
 
 
@@ -48,6 +59,24 @@ app.use(
     "/api/whatsapp-test",
     whatsappTestRoutes
 );
+app.use(
+    "/api/intent-test",
+    intentTestRoutes
+);
+app.use(
+    "/api/entity-test",
+    entityTestRoutes
+);
+app.use(
+    "/api/customer-info-test",
+    customerInfoTestRoutes
+);
+app.use(
+    "/api/customer-test",
+    customerTestRoutes
+);
+
+
 app.use(notFound)
 // app.get('/api/health',(req,res)=>{
 //     res.json({

@@ -3,7 +3,9 @@ const express = require("express");
 const {
     testCourse,
     testCourses,
-    testCourseDetection
+    testCourseDetection,
+    testFAQs,
+    testFAQDetection
 } = require("../controllers/knowledge.controller");
 
 const router = express.Router();
@@ -19,6 +21,13 @@ router.get(
 );
 
 router.post( "/test-course-detection", testCourseDetection );
-
+router.get(
+    "/test-faqs",
+    testFAQs
+);
+router.post(
+    "/test-faq-detection",
+    testFAQDetection
+);
 
 module.exports = router;

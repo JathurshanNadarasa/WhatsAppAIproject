@@ -1,4 +1,5 @@
 
+
 const {
     getCourses
 } = require("./course.service");
@@ -21,57 +22,192 @@ const detectCourse = async (
 
 
     // --------------------------------------------------
-    // 2. Create text from current message
-    //    + conversation history
+    // 2. Prepare current message
     // --------------------------------------------------
 
     const currentMessage =
         message || "";
 
+    const currentText =
+        currentMessage
+            .toLowerCase()
+            .trim();
+
+
+    // --------------------------------------------------
+    // 3. Exact course name match in current message
+    // --------------------------------------------------
+
+    const exactCurrentMatches =
+        courses.filter(
+            course => {
+
+                const courseName =
+                    course.name
+                        .toLowerCase()
+                        .trim();
+
+                return currentText.includes(
+                    courseName
+                );
+            }
+        );
+
+
+    // --------------------------------------------------
+    // 4. Exact current-message match
+    // --------------------------------------------------
+
+    if (
+        exactCurrentMatches.length === 1
+    ) {
+
+        return exactCurrentMatches[0];
+    }
+
+
+    // --------------------------------------------------
+    // 5. Multiple exact current-message matches
+    // --------------------------------------------------
+
+    if (
+        exactCurrentMatches.length > 1
+    ) {
+
+        return {
+            ambiguous: true,
+            courses: exactCurrentMatches
+        };
+    }
+
+
+    // --------------------------------------------------
+    // 6. Build conversation text
+    // --------------------------------------------------
+
     const conversationText =
         conversation
             .map(
-                item => item.message_text || ""
+                item =>
+                    item.message_text || ""
             )
             .join(" ");
 
 
     const searchText =
-        `${currentMessage} ${conversationText}`
-            .toLowerCase();
+        `${currentText} ${conversationText}`
+            .toLowerCase()
+            .trim();
 
 
     // --------------------------------------------------
-    // 3. Sort courses by name length
-    //    Longest name first
+    // 7. Exact course name match using conversation
     // --------------------------------------------------
 
-    const sortedCourses =
-        [...courses].sort(
-            (a, b) =>
-                b.name.length -
-                a.name.length
+    const exactMatches =
+        courses.filter(
+            course => {
+
+                const courseName =
+                    course.name
+                        .toLowerCase()
+                        .trim();
+
+                return searchText.includes(
+                    courseName
+                );
+            }
         );
 
 
     // --------------------------------------------------
-    // 4. Find matching course
+    // 8. If exactly one exact match
     // --------------------------------------------------
 
-    const matchedCourse =
-        sortedCourses.find(
-            course =>
-                searchText.includes(
-                    course.name.toLowerCase()
-                )
+    if (
+        exactMatches.length === 1
+    ) {
+
+        return exactMatches[0];
+    }
+
+
+    // --------------------------------------------------
+    // 9. If multiple exact matches
+    // --------------------------------------------------
+
+    if (
+        exactMatches.length > 1
+    ) {
+
+        return {
+            ambiguous: true,
+            courses: exactMatches
+        };
+    }
+
+
+    // --------------------------------------------------
+    // 10. Partial / keyword matches
+    // --------------------------------------------------
+
+    const partialMatches =
+        courses.filter(
+            course => {
+
+                const courseName =
+                    course.name
+                        .toLowerCase()
+                        .trim();
+
+                const courseWords =
+                    courseName
+                        .split(/\s+/)
+                        .filter(
+                            word =>
+                                word.length >= 3
+                        );
+
+                return courseWords.some(
+                    word =>
+                        searchText.includes(word)
+                );
+            }
         );
 
 
     // --------------------------------------------------
-    // 5. Return matched course
+    // 11. If exactly one partial match
     // --------------------------------------------------
 
-    return matchedCourse || null;
+    if (
+        partialMatches.length === 1
+    ) {
+
+        return partialMatches[0];
+    }
+
+
+    // --------------------------------------------------
+    // 12. If multiple partial matches
+    // --------------------------------------------------
+
+    if (
+        partialMatches.length > 1
+    ) {
+
+        return {
+            ambiguous: true,
+            courses: partialMatches
+        };
+    }
+
+
+    // --------------------------------------------------
+    // 13. No course found
+    // --------------------------------------------------
+
+    return null;
 };
 
 

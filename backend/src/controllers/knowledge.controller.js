@@ -1,12 +1,30 @@
-
 const {
     getCourseByName,
     getCourses
 } = require("../services/knowledge/course.service");
+
+
 const {
     detectCourse
 } = require("../services/knowledge/course-detector.service");
-const testCourseDetection = async (req, res) => {
+
+
+const {
+    getFAQs
+} = require("../services/knowledge/faq.service");
+
+const {
+    detectFAQ
+} = require("../services/knowledge/faq-detector.service");
+
+// --------------------------------------------------
+// Test Course Detection
+// --------------------------------------------------
+
+const testCourseDetection = async (
+    req,
+    res
+) => {
 
     try {
 
@@ -46,8 +64,14 @@ const testCourseDetection = async (req, res) => {
 };
 
 
+// --------------------------------------------------
+// Test Single Course
+// --------------------------------------------------
 
-const testCourse = async (req, res) => {
+const testCourse = async (
+    req,
+    res
+) => {
 
     try {
 
@@ -79,7 +103,14 @@ const testCourse = async (req, res) => {
 };
 
 
-const testCourses = async (req, res) => {
+// --------------------------------------------------
+// Test All Courses
+// --------------------------------------------------
+
+const testCourses = async (
+    req,
+    res
+) => {
 
     try {
 
@@ -110,9 +141,93 @@ const testCourses = async (req, res) => {
 };
 
 
+// --------------------------------------------------
+// Test FAQs
+// --------------------------------------------------
+
+const testFAQs = async (
+    req,
+    res
+) => {
+
+    try {
+
+        const businessId = 1;
+
+        const faqs =
+            await getFAQs(
+                businessId
+            );
+
+        return res.json({
+            success: true,
+            data: faqs
+        });
+
+    } catch (error) {
+
+        console.error(
+            "FAQ Knowledge Base Error:",
+            error.message
+        );
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch FAQs"
+        });
+    }
+};
+
+
+
+const testFAQDetection = async (
+    req,
+    res
+) => {
+
+    try {
+
+        const businessId = 1;
+
+        const {
+            message,
+            conversation = []
+        } = req.body;
+
+
+        const faq =
+            await detectFAQ(
+                businessId,
+                message,
+                conversation
+            );
+
+
+        return res.json({
+            success: true,
+            data: faq
+        });
+
+    } catch (error) {
+
+        console.error(
+            "FAQ Detection Error:",
+            error.message
+        );
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to detect FAQ"
+        });
+    }
+};
+// --------------------------------------------------
+// Export Controllers
+// --------------------------------------------------
+
 module.exports = {
     testCourse,
     testCourses,
-    testCourseDetection
+    testCourseDetection,
+    testFAQs,testFAQDetection
 };
-
