@@ -2,6 +2,13 @@ const pool = require("../../config/database");
 const {
     generateAIResponse,
 } = require("../ai/ai.service");
+const {
+    getConversationHistory
+} = require("./conversation.service");
+const {
+    getCourseByName
+} = require("../knowledge/course.service");
+
 const getBusinessByPhoneNumberId = async (
     phoneNumberId
 ) => {
@@ -155,15 +162,63 @@ const processIncomingMessage = async ({
 
 
     // 8. Generate AI response
-    let aiReply = null;
+   let aiReply = null;
 
 try {
 
-    const aiResult =
-        await generateAIResponse(
-            messageText
+    const conversationHistory =
+    await getConversationHistory(
+        conversationId,
+        10
+    );
+
+console.log(
+    "Conversation History:"
+);
+
+console.log(
+    conversationHistory
+);
+
+
+// --------------------------------------------------
+// Knowledge Base
+// --------------------------------------------------
+
+let knowledge = null;
+
+try {
+
+    knowledge =
+        await getCourseByName(
+            businessId,
+            "CCNA"
         );
 
+    console.log(
+        "Knowledge:",
+        knowledge
+    );
+
+} catch (error) {
+
+    console.error(
+        "Knowledge retrieval failed:",
+        error.message
+    );
+}
+
+
+// --------------------------------------------------
+// Generate AI Response
+// --------------------------------------------------
+
+const aiResult =
+    await generateAIResponse(
+        messageText,
+        conversationHistory,
+        knowledge
+    );
     console.log(
         "AI Result:",
         aiResult
@@ -176,13 +231,13 @@ try {
         aiReply
     );
 
-    } catch (error) {
+} catch (error) {
 
-        console.error(
-            "AI response generation failed:",
-            error.message
-        );
-    }
+    console.error(
+        "AI response generation failed:",
+        error.message
+    );
+}
 
     // 9. Return incoming message + AI response
     return {

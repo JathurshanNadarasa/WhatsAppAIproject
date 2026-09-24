@@ -23,7 +23,9 @@ router = APIRouter(
 def chat(request: AIChatRequest):
 
     reply = generate_ai_response(
-        request.message
+        message=request.message,
+        conversation=request.conversation,
+        knowledge=request.knowledge
     )
 
     return {

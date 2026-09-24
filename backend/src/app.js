@@ -18,6 +18,9 @@ const customerRoutes = require('./routes/customer.routes')
 const conversationRoutes = require("./routes/conversation.routes");
 const whatsappRoutes = require("./routes/whatsapp.routes");
 const aiRoutes = require("./routes/ai.routes");
+const knowledgeRoutes = require("./routes/knowledge.routes");
+const whatsappTestRoutes =
+    require("./routes/whatsapp.test.routes");
 const notFound = require('./middleware/not-found.middleware')
 
 
@@ -37,6 +40,14 @@ app.use('/api/customers',customerRoutes)
 app.use("/api/conversations",conversationRoutes)
 app.use("/api/whatsapp", whatsappRoutes);
 app.use("/api/ai", aiRoutes);
+app.use(
+    "/api/knowledge",
+    knowledgeRoutes
+);
+app.use(
+    "/api/whatsapp-test",
+    whatsappTestRoutes
+);
 app.use(notFound)
 // app.get('/api/health',(req,res)=>{
 //     res.json({
