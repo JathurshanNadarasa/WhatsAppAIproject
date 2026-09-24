@@ -6,8 +6,8 @@ const {
     getConversationHistory
 } = require("./conversation.service");
 const {
-    getCourseByName
-} = require("../knowledge/course.service");
+    detectCourse
+} = require("../knowledge/course-detector.service");
 
 const getBusinessByPhoneNumberId = async (
     phoneNumberId
@@ -181,33 +181,19 @@ console.log(
 );
 
 
-// --------------------------------------------------
-// Knowledge Base
-// --------------------------------------------------
+// Knowledge Base // 
+ let knowledge = null; 
+ try {
+     knowledge = await detectCourse( 
+        businessId, 
+        messageText,
+         conversationHistory ); 
+     
+     console.log( "Detected Course:", knowledge ); 
 
-let knowledge = null;
-
-try {
-
-    knowledge =
-        await getCourseByName(
-            businessId,
-            "CCNA"
-        );
-
-    console.log(
-        "Knowledge:",
-        knowledge
-    );
-
-} catch (error) {
-
-    console.error(
-        "Knowledge retrieval failed:",
-        error.message
-    );
-}
-
+    } catch (error) {
+         console.error( "Course detection failed:", error.message ); 
+        }
 
 // --------------------------------------------------
 // Generate AI Response
