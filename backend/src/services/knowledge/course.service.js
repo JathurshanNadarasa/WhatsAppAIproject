@@ -58,7 +58,38 @@ const getCourses = async (
 };
 
 
+const getCourseById = async (
+    businessId,
+    courseId
+) => {
+
+    const result = await pool.query(
+        `SELECT
+            id,
+            business_id,
+            name,
+            description,
+            duration,
+            fee,
+            schedule,
+            requirements
+         FROM courses
+         WHERE business_id = $1
+         AND id = $2
+         AND status = 'active'
+         LIMIT 1`,
+        [
+            businessId,
+            courseId
+        ]
+    );
+
+    return result.rows[0] || null;
+};
+
+
 module.exports = {
     getCourseByName,
-    getCourses
+    getCourses,
+    getCourseById
 };

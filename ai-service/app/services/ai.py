@@ -1,180 +1,81 @@
+"""
+AI reply generation (C8).
+
+1. Try the LLM with a grounded prompt (courses, FAQs, customer).
+2. If the LLM is disabled / fails / returns junk -> keyword template.
+
+Returns (reply, source) where source is "llm" or "template".
+"""
+
+import logging
+
+from app.core.config import settings
+from app.services.llm.client import complete
+from app.services.prompt import build_messages, build_system_prompt
+from app.services.template import template_reply
+
+
+logger = logging.getLogger("ai")
+
+MAX_REPLY_CHARS = 1000  # WhatsApp-friendly
+
+
+def _clean_reply(text: str) -> str | None:
+
+    reply = (text or "").strip().strip('"').strip()
+
+    # Models sometimes add markdown bold; WhatsApp uses *single*
+    reply = reply.replace("**", "*")
+
+    if not reply:
+        return None
+
+    if len(reply) > MAX_REPLY_CHARS:
+        cut = reply[:MAX_REPLY_CHARS]
+        reply = cut[: cut.rfind(".") + 1] or cut
+
+    return reply
+
+
 def generate_ai_response(
     message: str,
-    conversation: list = [],
-    knowledge=None
-) -> str:
+    conversation: list | None = None,
+    knowledge=None,
+    context: dict | None = None,
+) -> tuple[str, str]:
 
-    message_lower = message.lower().strip()
+    conversation = conversation or []
+    context = context or {}
 
-    # --------------------------------------------------
-    # 1. Knowledge Base Response
-    # --------------------------------------------------
-
-    if knowledge:
-
-        course_name = knowledge.get(
-            "name",
-            "the course"
-        )
-
-        description = knowledge.get(
-            "description"
-        )
-
-        duration = knowledge.get(
-            "duration"
-        )
-
-        fee = knowledge.get(
-            "fee"
-        )
-
-        schedule = knowledge.get(
-            "schedule"
-        )
-
-        requirements = knowledge.get(
-            "requirements"
-        )
-
-
- # --------------------------------------------------
-        # Course Selection / Confirmation
-        # --------------------------------------------------
-
-        if (
-            course_name.lower() in message_lower
-        ):
-
-            return (
-                f"Great choice! "
-                f"Our {course_name} course covers "
-                f"{description}. "
-                f"The course duration is {duration}."
-            )
-        # --------------------------------------------------
-        # Fee Intent
-        # --------------------------------------------------
-
-        if (
-            "fee" in message_lower
-            or "price" in message_lower
-            or "cost" in message_lower
-            or "payment" in message_lower
-            or "how much" in message_lower
-        ):
-
-            if fee and float(fee) > 0:
-                return (
-                    f"The {course_name} course fee "
-                    f"is LKR {fee}."
-                )
-
-            return (
-                f"I can help you with the {course_name} "
-                "course fee. Our team can provide "
-                "you with the latest fee details."
-            )
-
-        # --------------------------------------------------
-        # Duration Intent
-        # --------------------------------------------------
-
-        if (
-            "duration" in message_lower
-            or "how long" in message_lower
-            or "months" in message_lower
-            or "weeks" in message_lower
-        ):
-
-            return (
-                f"The {course_name} course duration "
-                f"is {duration}."
-            )
-
-        # --------------------------------------------------
-        # Schedule Intent
-        # --------------------------------------------------
-
-        if (
-            "schedule" in message_lower
-            or "class" in message_lower
-            or "classes" in message_lower
-            or "batch" in message_lower
-            or "batches" in message_lower
-            or "when" in message_lower
-        ):
-
-            return (
-                f"The {course_name} course has "
-                f"the following schedule: {schedule}."
-            )
-
-        # --------------------------------------------------
-        # Requirements Intent
-        # --------------------------------------------------
-
-        if (
-            "requirement" in message_lower
-            or "requirements" in message_lower
-            or "eligibility" in message_lower
-            or "qualification" in message_lower
-            or "need" in message_lower
-        ):
-
-            return (
-                f"For the {course_name} course, "
-                f"the requirements are: {requirements}."
-            )
-
-        # --------------------------------------------------
-        # General Course Interest
-        # --------------------------------------------------
-
-        if (
-            "learn" in message_lower
-            or "study" in message_lower
-            or "interested" in message_lower
-            or "want to join" in message_lower
-            or "join" in message_lower
-            or "course" in message_lower
-            or "training" in message_lower
-        ):
-
-            if description:
-                return (
-                        f"Our {course_name} course covers "
-                        f"{description}."
-                    )
-
-            return (
-                f"Our {course_name} course is available. "
-                "Would you like to know the fee, "
-                "duration, or schedule?"
-            )
-
-    
-    # --------------------------------------------------
-    # 2. Greeting
-    # --------------------------------------------------
-
-    if (
-        message_lower == "hi"
-        or message_lower == "hello"
-        or message_lower.startswith("hi ")
-        or message_lower.startswith("hello ")
-    ):
-
-        return (
-            "Hello! 👋 Welcome to Nexora Training "
-            "Institute. How can I help you today?"
-        )
-
-    # --------------------------------------------------
-    # 3. Default Response
-    # --------------------------------------------------
-
-    return (
-        "Thanks for your message. "
-        "Our team will help you with your enquiry."
+    business_name = (
+        (context.get("business") or {}).get("name")
+        or settings.DEFAULT_BUSINESS_NAME
     )
+
+    customer_first_name = (context.get("customer") or {}).get("first_name")
+
+    # ---------- 1. LLM ----------
+
+    if settings.llm_enabled:
+
+        system_prompt = build_system_prompt(knowledge, context)
+        messages = build_messages(message, conversation)
+
+        reply = _clean_reply(complete(system_prompt, messages))
+
+        if reply:
+            logger.info("LLM reply (%s)", settings.LLM_PROVIDER)
+            return reply, "llm"
+
+        logger.warning("LLM unavailable, using template fallback")
+
+    # ---------- 2. Template fallback ----------
+
+    reply = template_reply(
+        message,
+        knowledge=knowledge,
+        business_name=business_name,
+        customer_first_name=customer_first_name,
+    )
+
+    return reply, "template"

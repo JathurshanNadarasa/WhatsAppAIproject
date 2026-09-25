@@ -1,154 +1,162 @@
 // --------------------------------------------------
-// Customer Information Extractor
+// Customer Information Extractor (C7.6)
+// --------------------------------------------------
+// Pulls the customer's name / phone out of a message.
+//
+// options.expectingName = true when the bot has just
+// asked "May I know your name?" (conversation.state ===
+// 'awaiting_name'). Only then is a bare reply like
+// "Kamal Perera" treated as a name.
+// --------------------------------------------------
+
+// Words that follow "I am / I'm" but are NOT names
+const NOT_A_NAME = new Set([
+    "interested", "looking", "searching", "here", "from", "fine",
+    "good", "ok", "okay", "not", "just", "also", "very", "so",
+    "a", "an", "the", "going", "trying", "planning", "asking",
+    "working", "studying", "student", "currently", "still",
+    "ready", "available", "free", "busy", "new", "confused",
+    "sure", "sorry", "thinking", "calling", "writing", "messaging",
+    "hi", "hello", "hey", "yes", "no", "yeah", "thanks", "thank",
+    "course", "courses", "fee", "fees", "price", "python", "java",
+    "please", "pls", "want", "need", "would", "like", "can", "what",
+    "when", "where", "how", "why", "which", "who", "is", "are",
+    "and", "i", "but", "or", "with", "to", "my", "wants"
+]);
+
+const MAX_NAME_WORDS = 3;
+
+
+// --------------------------------------------------
+// Helpers
+// --------------------------------------------------
+
+const toTitleCase = (value) =>
+    value
+        .toLowerCase()
+        .split(/\s+/)
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ");
+
+
+// Returns a clean name or null
+const cleanName = (raw) => {
+
+    if (!raw) {
+        return null;
+    }
+
+    const words = raw
+        .replace(/[^A-Za-z.\s'-]/g, " ")
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+
+    // Stop at the first word that clearly isn't a name
+    const nameWords = [];
+
+    for (const word of words) {
+
+        if (NOT_A_NAME.has(word.toLowerCase())) {
+            break;
+        }
+
+        nameWords.push(word);
+
+        if (nameWords.length === MAX_NAME_WORDS) {
+            break;
+        }
+    }
+
+    if (nameWords.length === 0) {
+        return null;
+    }
+
+    const name = nameWords.join(" ").replace(/\.+$/, "");
+
+    if (name.length < 2 || name.length > 60) {
+        return null;
+    }
+
+    return toTitleCase(name);
+};
+
+
+// --------------------------------------------------
+// Main extractor
 // --------------------------------------------------
 
 const extractCustomerInfo = (
     message,
-    conversation = []
+    conversation = [],
+    options = {}
 ) => {
 
-    // --------------------------------------------------
-    // 1. Prepare current message
-    // --------------------------------------------------
+    const { expectingName = false } = options;
 
-    const text =
-        (message || "")
-            .trim();
-
-
-    // --------------------------------------------------
-    // 2. Result object
-    // --------------------------------------------------
+    const text = (message || "").trim();
 
     const customer = {};
 
-
-    // --------------------------------------------------
-    // 3. Extract Phone Number
-    // --------------------------------------------------
-
-    const phoneMatch =
-        text.match(
-            /(?:\+94|0094|0)?\s*\d{2,3}[\s-]?\d{3,4}[\s-]?\d{3,4}/
-        );
-
-
-    if (
-        phoneMatch
-    ) {
-
-        customer.phone =
-            phoneMatch[0]
-                .replace(
-                    /[\s-]/g,
-                    ""
-                );
+    if (!text) {
+        return customer;
     }
 
 
-    // --------------------------------------------------
-    // 4. Extract Name from direct statement
-    // --------------------------------------------------
+    // 1. Phone number (Sri Lankan formats)
+    const phoneMatch = text.match(
+        /(?:\+94|0094|0)\s*7\d[\s-]?\d{3}[\s-]?\d{4}\b/
+    );
 
-    const nameMatch =
-        text.match(
-            /(?:my name is|i am|i'm|this is)\s+([A-Za-z]+(?:\s+[A-Za-z]+){0,2})/i
-        );
-
-
-    if (
-        nameMatch
-    ) {
-
-        customer.name =
-            nameMatch[1]
-                .trim();
+    if (phoneMatch) {
+        customer.phone = phoneMatch[0].replace(/[\s-]/g, "");
     }
 
 
-    // --------------------------------------------------
-    // 5. Conversation-based name extraction
-    // --------------------------------------------------
+    // 2. Explicit statement: "my name is X", "call me X",
+    //    "this is X", "I am X" / "I'm X"
+    const explicitMatch = text.match(
+        /\b(?:my name is|my name's|name is|call me|this is|i am|i'm|im)\s+([A-Za-z][A-Za-z.'\s-]{0,60})/i
+    );
 
-    if (
-        !customer.name &&
-        text
-    ) {
+    if (explicitMatch) {
 
-        const previousMessage =
-            conversation[
-                conversation.length - 1
-            ];
+        const name = cleanName(explicitMatch[1]);
 
-
-        if (
-            previousMessage &&
-            previousMessage.sender_type === "ai" ||
-            previousMessage.sender_type === "business"
-        ) {
-
-            const previousText =
-                (
-                    previousMessage.message_text ||
-                    ""
-                )
-                    .toLowerCase()
-                    .trim();
-
-
-            const askedForName =
-                previousText.includes(
-                    "your name"
-                )
-                ||
-                previousText.includes(
-                    "know your name"
-                )
-                ||
-                previousText.includes(
-                    "may i know your name"
-                )
-                ||
-                previousText.includes(
-                    "what is your name"
-                );
-
-
-            if (
-                askedForName
-            ) {
-
-                const simpleName =
-                    text.match(
-                        /^[A-Za-z]+(?:\s+[A-Za-z]+){0,2}$/
-                    );
-
-
-                if (
-                    simpleName
-                ) {
-
-                    customer.name =
-                        simpleName[0]
-                            .trim();
-                }
-            }
+        if (name) {
+            customer.name = name;
+            customer.nameSource = "explicit";
         }
     }
 
 
-    // --------------------------------------------------
-    // 6. Return extracted information
-    // --------------------------------------------------
+    // 3. Bare reply right after the bot asked for the name
+    if (!customer.name && expectingName) {
+
+        // "Kamal", "kamal perera", "Kamal." , "Kamal here"
+        const bare = text
+            .replace(/\b(here|sir|madam|miss)\b/gi, "")
+            .trim();
+
+        const looksLikeName = /^[A-Za-z][A-Za-z.'\s-]{0,60}$/.test(bare)
+            && bare.split(/\s+/).length <= MAX_NAME_WORDS;
+
+        if (looksLikeName) {
+
+            const name = cleanName(bare);
+
+            if (name) {
+                customer.name = name;
+                customer.nameSource = "reply";
+            }
+        }
+    }
 
     return customer;
 };
 
 
-// --------------------------------------------------
-// Export
-// --------------------------------------------------
-
 module.exports = {
-    extractCustomerInfo
+    extractCustomerInfo,
+    cleanName
 };

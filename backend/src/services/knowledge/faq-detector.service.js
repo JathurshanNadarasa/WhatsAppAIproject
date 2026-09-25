@@ -4,159 +4,138 @@ const {
 
 
 // --------------------------------------------------
-// Detect FAQ
+// FAQ Detector (C8 rewrite)
 // --------------------------------------------------
+// - Looks at the CURRENT message only (old version also
+//   scanned bot replies -> "your" in "may I know your name"
+//   matched "What are your office hours?")
+// - Ignores common words (what, your, have, does...)
+// - Whole-word matching, scored per FAQ
+// - Returns the best FAQ only when the match is strong.
+//   Anything weaker goes to the LLM, which receives all
+//   FAQs in its prompt anyway.
+// --------------------------------------------------
+
+const STOP_WORDS = new Set([
+    "a", "an", "the", "is", "are", "am", "was", "were", "be", "been",
+    "do", "does", "did", "have", "has", "had", "can", "could", "will",
+    "would", "should", "shall", "may", "might", "must",
+    "i", "me", "my", "we", "our", "us", "you", "your", "yours",
+    "it", "its", "they", "their", "them", "he", "she", "his", "her",
+    "what", "which", "who", "whom", "whose", "when", "where", "why", "how",
+    "this", "that", "these", "those", "there", "here",
+    "and", "or", "but", "if", "so", "to", "of", "in", "on", "at", "for",
+    "with", "about", "from", "by", "as", "into", "any", "some", "all",
+    "please", "pls", "hi", "hello", "hey", "tell", "know", "want", "need",
+    "get", "give", "provide", "there", "much", "many", "also", "just",
+    "any", "available", "details", "detail", "info", "information"
+]);
+
+// Minimum share of an FAQ's key words that must appear
+const MIN_SCORE = 0.6;
+
+
+const normalize = (text) =>
+    (text || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+
+// Very small stemmer: classes -> class, hours -> hour, located -> locat
+const stem = (word) =>
+    word
+        .replace(/(ies)$/, "y")
+        .replace(/(es|s)$/, "")
+        .replace(/(ed|ing)$/, "")
+        .replace(/e$/, "");
+
+
+const keyWords = (text) => [
+    ...new Set(
+        normalize(text)
+            .split(" ")
+            .filter(word => word.length >= 3 && !STOP_WORDS.has(word))
+            .map(stem)
+    )
+];
+
 
 const detectFAQ = async (
     businessId,
     message,
+    // kept for backward compatibility, no longer used
     conversation = []
 ) => {
 
-    // --------------------------------------------------
-    // 1. Get all active FAQs
-    // --------------------------------------------------
+    const faqs = await getFAQs(businessId);
 
-    const faqs =
-        await getFAQs(
-            businessId
-        );
+    const current = normalize(message);
 
-
-    // --------------------------------------------------
-    // 2. Prepare current message
-    // --------------------------------------------------
-
-    const currentMessage =
-        message || "";
-
-    const currentText =
-        currentMessage
-            .toLowerCase()
-            .trim();
+    if (!current || faqs.length === 0) {
+        return null;
+    }
 
 
-    // --------------------------------------------------
-    // 3. Exact question match
-    // --------------------------------------------------
+    // 1. Exact question match
+    const exact = faqs.find(
+        faq => normalize(faq.question) === current
+    );
 
-    const exactMatches =
-        faqs.filter(
-            faq => {
+    if (exact) {
+        return exact;
+    }
 
-                const question =
-                    faq.question
-                        .toLowerCase()
-                        .trim();
 
-                return (
-                    currentText === question
-                );
+    // 2. Score each FAQ by key-word overlap
+    const messageWords = new Set(keyWords(current));
+
+    if (messageWords.size === 0) {
+        return null;
+    }
+
+    const scored = faqs
+        .map(faq => {
+
+            const questionWords = keyWords(faq.question);
+
+            if (questionWords.length === 0) {
+                return { faq, score: 0 };
             }
-        );
+
+            const matched = questionWords.filter(
+                word => messageWords.has(word)
+            );
+
+            return {
+                faq,
+                score: matched.length / questionWords.length,
+                matchedCount: matched.length
+            };
+        })
+        .filter(item => item.score >= MIN_SCORE && item.matchedCount >= 1)
+        .sort((a, b) => b.score - a.score);
 
 
-    // --------------------------------------------------
-    // 4. If exactly one exact match
-    // --------------------------------------------------
-
-    if (
-        exactMatches.length === 1
-    ) {
-
-        return exactMatches[0];
+    if (scored.length === 0) {
+        return null;
     }
 
 
-    // --------------------------------------------------
-    // 5. Build searchable text
-    // --------------------------------------------------
-
-    const conversationText =
-        conversation
-            .map(
-                item =>
-                    item.message_text || ""
-            )
-            .join(" ");
-
-
-    const searchText =
-        `${currentText} ${conversationText}`
-            .toLowerCase()
-            .trim();
-
-
-    // --------------------------------------------------
-    // 6. Keyword matching
-    // --------------------------------------------------
-
-    const matches =
-        faqs.filter(
-            faq => {
-
-                const questionWords =
-                    faq.question
-                        .toLowerCase()
-                        .replace(
-                            /[?!.,]/g,
-                            ""
-                        )
-                        .split(/\s+/)
-                        .filter(
-                            word =>
-                                word.length >= 4
-                        );
-
-
-                const matchedWords =
-                    questionWords.filter(
-                        word =>
-                            searchText.includes(
-                                word
-                            )
-                    );
-
-
-                return (
-                    matchedWords.length >= 2
-                );
-            }
-        );
-
-
-    // --------------------------------------------------
-    // 7. If exactly one FAQ matches
-    // --------------------------------------------------
-
-    if (
-        matches.length === 1
-    ) {
-
-        return matches[0];
+    // 3. Clear winner
+    if (scored.length === 1 || scored[0].score > scored[1].score) {
+        return scored[0].faq;
     }
 
 
-    // --------------------------------------------------
-    // 8. Multiple FAQ matches
-    // --------------------------------------------------
+    // 4. Tie between strong matches
+    const top = scored.filter(item => item.score === scored[0].score);
 
-    if (
-        matches.length > 1
-    ) {
-
-        return {
-            ambiguous: true,
-            faqs: matches
-        };
-    }
-
-
-    // --------------------------------------------------
-    // 9. No FAQ found
-    // --------------------------------------------------
-
-    return null;
+    return {
+        ambiguous: true,
+        faqs: top.map(item => item.faq)
+    };
 };
 
 

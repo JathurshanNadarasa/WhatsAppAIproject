@@ -22,11 +22,6 @@ console.log(
     process.env.WHATSAPP_ACCESS_TOKEN?.length
 );
 
-console.log(
-    "Access Token starts with:",
-    process.env.WHATSAPP_ACCESS_TOKEN?.substring(0, 8)
-);
-
 const {
     sendWhatsAppMessage
 } = require("./whatsapp.sender");

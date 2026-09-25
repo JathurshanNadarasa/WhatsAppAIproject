@@ -1,265 +1,226 @@
-const {
-    parseIncomingMessage
-} = require("../services/whatsapp/whatsapp.parser");
+// --------------------------------------------------
+// WhatsApp webhook (C14)
+// --------------------------------------------------
+// 1. Answer Meta with 200 straight away (Meta retries
+//    anything slower than ~20s and would duplicate work)
+// 2. Then, in the background:
+//    - delivery statuses  -> message ticks
+//    - customer messages  -> one at a time per customer
+// --------------------------------------------------
+
+const { parseWebhook } = require("../services/whatsapp/whatsapp.parser");
 
 const {
-     getBusinessByPhoneNumberId,
-    processIncomingMessage,
-    saveOutgoingMessage
+    getBusinessByPhoneNumberId,
+    processIncomingMessage
 } = require("../services/whatsapp/whatsapp.service");
 
+const { sendToCustomer } = require("../services/whatsapp/outbound.service");
+const { applyStatusUpdate } = require("../services/whatsapp/status.service");
+const { markAsRead, sendText } = require("../services/whatsapp/whatsapp.sender");
 
+const { refreshSummaryInBackground } = require("../services/summary/conversation-summary.service");
+const { refreshLeadInBackground } = require("../services/lead/lead.service");
+const { emitEvent } = require("../services/automation/automation-engine");
+
+
+// --------------------------------------------------
+// GET  /api/whatsapp/webhook  (Meta verification)
+// --------------------------------------------------
 
 const verifyWebhook = (req, res) => {
-    const mode = req.query['hub.mode']
-    const token = req.query['hub.verify_token']
-    const challenge = req.query['hub.challenge']
 
-    console.log('Mode:', mode)
-    console.log('Token received:', token)
-    console.log('Token from ENV:', process.env.WHATSAPP_VERIFY_TOKEN)
-    console.log('Challenge:', challenge)
+    const mode = req.query["hub.mode"];
+    const token = req.query["hub.verify_token"];
+    const challenge = req.query["hub.challenge"];
 
-    if (
-        mode === 'subscribe' &&
-        token === process.env.WHATSAPP_VERIFY_TOKEN
-    ) {
-        console.log('WhatsApp Webhook verified')
-
-        return res.status(200).send(challenge)
+    if (mode === "subscribe" && token && token === process.env.WHATSAPP_VERIFY_TOKEN) {
+        console.log("WhatsApp webhook verified");
+        return res.status(200).send(challenge);
     }
 
-    console.log('WhatsApp Webhook verification failed')
-
-    return res.sendStatus(403)
-}
-const receiveWebhook = async (req, res) => {
-    try {
-
-        console.log(
-            "WhatsApp webhook received:"
-        );
-
-        const message =
-            parseIncomingMessage(req.body);
-
-        if (!message) {
-
-            console.log(
-                "No incoming WhatsApp message found"
-            );
-
-            return res.sendStatus(200);
-        }
-
-        console.log(
-            "Incoming WhatsApp message:",
-            message
-        );
+    // Never log the tokens themselves
+    console.warn("WhatsApp webhook verification failed");
+    return res.sendStatus(403);
+};
 
 
-        // 1. Identify business
-        const business =
-            await getBusinessByPhoneNumberId(
-                message.phoneNumberId
-            );
+// --------------------------------------------------
+// One queue per customer so their messages are handled
+// in order (and we never create two conversations)
+// --------------------------------------------------
 
-        if (!business) {
+const queues = new Map();
 
-            console.error(
-                "WhatsApp business not found for phone number ID:",
-                message.phoneNumberId
-            );
+const enqueue = (key, task) => {
 
-            return res.sendStatus(200);
-        }
+    const previous = queues.get(key) || Promise.resolve();
 
-        console.log(
-            "WhatsApp business identified:",
-            business
-        );
+    const next = previous
+        .catch(() => undefined)
+        .then(task)
+        .catch((error) => console.error("WhatsApp message processing failed:", error.message))
+        .finally(() => {
+            if (queues.get(key) === next) queues.delete(key);
+        });
 
+    queues.set(key, next);
 
-        // 2. Save incoming message
-        //    + Generate AI response
-        const result =
-            await processIncomingMessage({
-                businessId: business.id,
-                phone: message.phone,
-                messageId: message.messageId,
-                messageType: message.messageType,
-                messageText: message.messageText
-            });
+    return next;
+};
 
 
-        // 3. Ignore duplicate messages
-        if (result.duplicate) {
+// --------------------------------------------------
+// Handle one customer message
+// --------------------------------------------------
 
-            console.log(
-                "Duplicate WhatsApp message ignored:",
-                result.messageId
-            );
+const handleIncomingMessage = async (message) => {
 
-            return res.sendStatus(200);
-        }
+    const business = await getBusinessByPhoneNumberId(message.phoneNumberId);
 
+    if (!business) {
+        console.error("WhatsApp business not found for phone number ID:", message.phoneNumberId);
+        return;
+    }
 
-        console.log(
-            "WhatsApp message saved successfully"
-        );
-
-        console.log(
-            "Customer:",
-            result.customer
-        );
-
-        console.log(
-            "Conversation ID:",
-            result.conversationId
-        );
-
-        console.log(
-            "Message:",
-            result.message
-        );
-
-
-        // 4. Display AI response
-        if (!result.aiReply) {
-
-            console.log(
-                "No AI reply generated"
-            );
-
-            return res.sendStatus(200);
-        }
-// 5. Save AI reply to database
-const outgoingMessage =
-    await saveOutgoingMessage({
+    const result = await processIncomingMessage({
         businessId: business.id,
         phone: message.phone,
-        messageText: result.aiReply,
-        whatsappMessageId: null
+        messageId: message.messageId,
+        messageType: message.messageType,
+        messageText: message.messageText,
+        mediaId: message.mediaId,
+        mediaMimeType: message.mediaMimeType
     });
 
-console.log(
-    "AI reply saved to database:"
-);
-
-console.log(
-    outgoingMessage
-);
-
-        console.log(
-            "================================="
-        );
-
-        console.log(
-            "AI REPLY:"
-        );
-
-        console.log(
-            result.aiReply
-        );
-
-        console.log(
-            "================================="
-        );
-
-
-        // 5. Temporary development mode
-        console.log(
-            "Development mode:"
-        );
-
-        console.log(
-            "WhatsApp sending is temporarily disabled."
-        );
-
-
-        return res.sendStatus(200);
-
-    } catch (error) {
-
-        console.error(
-            "WhatsApp webhook error:",
-            error.response?.data ||
-            error.message
-        );
-
-        return res.sendStatus(500);
+    if (result.duplicate) {
+        console.log("Duplicate WhatsApp message ignored:", message.messageId);
+        return;
     }
-};
 
-const {
-    sendWhatsAppMessage
-} = require("../services/whatsapp/whatsapp.sender");
+    console.log(
+        `📥 ${message.phone} (${message.messageType}): ${message.messageText ?? "[no text]"} ` +
+        `-> conversation ${result.conversationId}`
+    );
 
-const sendMessage = async (req, res) => {
-    try {
-        const {
-            to,
-            message
-        } = req.body;
+    // Blue ticks for the customer (best effort)
+    if (process.env.WHATSAPP_SENDING_ENABLED === "true" && process.env.WHATSAPP_MARK_AS_READ !== "false") {
+        markAsRead({ phoneNumberId: business.whatsapp_phone_number_id, messageId: message.messageId })
+            .catch((error) => console.warn("Mark as read failed:", error.message));
+    }
 
-        if (!to || !message) {
-            return res.status(400).json({
-                success: false,
-                message: "Recipient and message are required"
-            });
+    // Bot reply (none while staff are handling the chat)
+    if (result.aiReply) {
+
+        const sent = await sendToCustomer({
+            businessId: business.id,
+            conversationId: result.conversationId,
+            text: result.aiReply
+        });
+
+        if (!sent.ok) {
+            console.error("Bot reply not delivered:", sent.reason);
         }
 
-        const businessId = 1;
+    } else if (result.handover && result.handover !== "bot") {
 
-        const result = await sendWhatsAppMessage({
-            phoneNumberId:
-                process.env.WHATSAPP_PHONE_NUMBER_ID,
+        console.log(`Human handover (${result.handover}): message waiting for staff`);
+    }
 
-            accessToken:
-                process.env.WHATSAPP_ACCESS_TOKEN,
+    // Background work for every message (C9-C11)
+    refreshSummaryInBackground(result.conversationId, { intent: result.intent });
 
+    refreshLeadInBackground(business.id, result.customer.id);
+
+    emitEvent("message_received", {
+        businessId: business.id,
+        customerId: result.customer.id,
+        conversationId: result.conversationId,
+        payload: {
+            intent: result.intent,
+            messageText: message.messageText,
+            handover: result.handover
+        }
+    });
+};
+
+
+// --------------------------------------------------
+// POST /api/whatsapp/webhook
+// --------------------------------------------------
+
+const receiveWebhook = (req, res) => {
+
+    let parsed;
+
+    try {
+        parsed = parseWebhook(req.body);
+    } catch (error) {
+        console.error("WhatsApp webhook parse error:", error.message);
+        return res.sendStatus(200);          // bad payload: don't make Meta retry
+    }
+
+    // Acknowledge first
+    res.sendStatus(200);
+
+    const { messages, statuses } = parsed;
+
+    for (const status of statuses) {
+        applyStatusUpdate(status).catch((error) =>
+            console.error("Status update failed:", error.message)
+        );
+    }
+
+    for (const message of messages) {
+        enqueue(`${message.phoneNumberId}:${message.phone}`, () => handleIncomingMessage(message));
+    }
+};
+
+
+// --------------------------------------------------
+// POST /api/whatsapp/send  (development test only)
+// --------------------------------------------------
+
+const sendMessage = async (req, res) => {
+
+    if (process.env.NODE_ENV === "production") {
+        return res.sendStatus(404);
+    }
+
+    try {
+
+        const { to, message } = req.body || {};
+
+        if (!to || !message) {
+            return res.status(400).json({ success: false, message: "Recipient and message are required" });
+        }
+
+        const result = await sendText({
+            phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID,
             to,
-            message
+            text: message
         });
 
-        const whatsappMessageId =
-            result.messages?.[0]?.id;
-
-        const savedMessage =
-            await saveOutgoingMessage({
-                businessId,
-                phone: to,
-                messageText: message,
-                whatsappMessageId
-            });
-
-        return res.status(200).json({
-            success: true,
-            message: "WhatsApp message sent and saved successfully",
-            data: {
-                whatsapp: result,
-                database: savedMessage
-            }
-        });
+        return res.status(200).json({ success: true, whatsappMessageId: result.messageId });
 
     } catch (error) {
-        console.error(
-            "WhatsApp send error:",
-            error.response?.data ||
-            error.message
-        );
 
-        return res.status(500).json({
+        console.error("WhatsApp send error:", error.message);
+
+        return res.status(error.status || 500).json({
             success: false,
-            message: "Failed to send WhatsApp message",
-            error:
-                error.response?.data ||
-                error.message
+            message: error.message,
+            code: error.code || null
         });
     }
 };
+
+
 module.exports = {
     verifyWebhook,
     receiveWebhook,
-    sendMessage
+    sendMessage,
+    // exported for tests
+    handleIncomingMessage,
+    enqueue
 };

@@ -5,6 +5,16 @@ const {
 } = require("./course.service");
 
 
+// Words that appear in many course names and would make
+// every message match every course ("course", "diploma"...)
+const GENERIC_COURSE_WORDS = new Set([
+    "course", "courses", "diploma", "certificate", "certification",
+    "program", "programme", "class", "classes", "training",
+    "advanced", "basic", "beginner", "intermediate", "level",
+    "and", "the", "for", "with", "introduction", "intro"
+]);
+
+
 const detectCourse = async (
     businessId,
     message,
@@ -165,7 +175,8 @@ const detectCourse = async (
                         .split(/\s+/)
                         .filter(
                             word =>
-                                word.length >= 3
+                                word.length >= 3 &&
+                                !GENERIC_COURSE_WORDS.has(word)
                         );
 
                 return courseWords.some(
